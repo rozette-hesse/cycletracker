@@ -1,27 +1,29 @@
-from datetime import datetime, timedelta
-import statistics
 import streamlit as st
+from datetime import datetime, timedelta
 
+st.set_page_config(page_title="Cycle Tracker", layout="centered")
+
+# --- Helper Class ---
 class CyclePredictor:
-    def __init__(self, period_start_dates):
-        self.period_dates = [datetime.strptime(d, "%Y-%m-%d") for d in period_start_dates if d]
+    def __init__(self, period_ranges):
+        self.period_ranges = sorted(period_ranges, key=lambda x: x[0])
+        self.period_start_dates = [start for start, _ in self.period_ranges]
         self.cycle_lengths = self._calculate_cycle_lengths()
 
     def _calculate_cycle_lengths(self):
         return [
-            (self.period_dates[i+1] - self.period_dates[i]).days
-            for i in range(len(self.period_dates) - 1)
-        ] if len(self.period_dates) > 1 else []
+            (self.period_start_dates[i + 1] - self.period_start_dates[i]).days
+            for i in range(len(self.period_start_dates) - 1)
+        ] if len(self.period_start_dates) > 1 else []
 
     def predict_next_period(self):
-        if len(self.period_dates) < 2:
-            return {
-                "error": "Not enough data. Please log at least 2 cycles."
-            }
+        if len(self.period_start_dates) < 2:
+            return {"error": "Log at least 2 periods to predict."}
 
-        avg_cycle_length = round(statistics.mean(self.cycle_lengths))
-        last_period_start = self.period_dates[-1]
-        predicted_start = last_period_start + timedelta(days=avg_cycle_length)
+        last_period_start = self.period_start_dates[-1]
+        prev_period_start = self.period_start_dates[-2]
+        last_cycle_length = (last_period_start - prev_period_start).days
+        predicted_start = last_period_start + timedelta(days=last_cycle_length)
 
         prediction_range = [
             (predicted_start - timedelta(days=2)).strftime("%Y-%m-%d"),
@@ -31,24 +33,24 @@ class CyclePredictor:
         return {
             "predicted_start_date": predicted_start.strftime("%Y-%m-%d"),
             "range": prediction_range,
-            "confidence": f"Moderate — Based on average of {len(self.cycle_lengths)} cycle(s)",
-            "based_on": "average cycle length"
+            "confidence": "Moderate",
+            "based_on": "last known cycle length"
         }
 
     def get_current_phase(self, current_date=None):
-        if len(self.period_dates) < 1:
-            return "Insufficient data to determine current phase."
+        if not self.period_start_dates:
+            return "Insufficient data"
 
         if not current_date:
             current_date = datetime.today()
         else:
             current_date = datetime.strptime(current_date, "%Y-%m-%d")
 
-        last_start = self.period_dates[-1]
+        last_start = self.period_start_dates[-1]
         days_since_last_period = (current_date - last_start).days
 
         if days_since_last_period < 0:
-            return "Invalid current date: before last period logged"
+            return "Invalid date: before last period"
 
         if days_since_last_period <= 5:
             return f"Cycle Day {days_since_last_period + 1} — Menstrual Phase"
@@ -59,25 +61,34 @@ class CyclePredictor:
         else:
             return f"Cycle Day {days_since_last_period + 1} — Luteal Phase"
 
-# Static input example for environments without input()
-if __name__ == "__main__":
-    print("Cycle Predictor — Static Input Example")
+# --- Streamlit App ---
+st.title("Menstrual Cycle Tracker — Free Version")
 
-    period_logs = ["2025-10-06", "2025-11-01"]
+num_periods = st.number_input("How many past periods would you like to log?", min_value=2, max_value=10, value=2, step=1)
 
-    if len(period_logs) < 2:
-        print("Insufficient data. Please log at least 2 period start dates.")
+period_ranges = []
+for i in range(num_periods):
+    with st.expander(f"Period #{i + 1}"):
+        start_date = st.date_input(f"Start Date {i + 1}", key=f"start_{i}", value=None)
+        end_date = st.date_input(f"End Date {i + 1}", key=f"end_{i}", value=None)
+
+        if start_date and end_date and start_date <= end_date:
+            period_ranges.append((datetime.combine(start_date, datetime.min.time()), datetime.combine(end_date, datetime.min.time())))
+
+if st.button("Predict Next Period"):
+    if len(period_ranges) < 2:
+        st.warning("Please log at least 2 periods.")
     else:
-        predictor = CyclePredictor(period_logs)
+        predictor = CyclePredictor(period_ranges)
         prediction = predictor.predict_next_period()
-        today_str = datetime.today().strftime("%Y-%m-%d")
-        phase = predictor.get_current_phase(today_str)
 
-        print("\nPrediction Result:")
-        print(f"Predicted Next Period: {prediction.get('predicted_start_date')}")
-        print(f"Range: {prediction.get('range')}")
-        print(f"Confidence: {prediction.get('confidence')}")
-        print(f"Based on: {prediction.get('based_on')}")
+        if "error" in prediction:
+            st.error(prediction["error"])
+        else:
+            st.success(f"Predicted Start Date: {prediction['predicted_start_date']}")
+            st.markdown(f"**Prediction Range:** {prediction['range'][0]} to {prediction['range'][1]}")
+            st.caption(f"Confidence: {prediction['confidence']} — Based on average of {len(predictor.cycle_lengths)} cycle(s)")
 
-        print("\nCurrent Phase:")
-        print(f"Today: {today_str}\n{phase}")
+        # Show phase for today
+        phase_today = predictor.get_current_phase()
+        st.markdown(f"### Today's Phase: {phase_today}")
