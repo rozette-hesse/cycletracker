@@ -71,7 +71,7 @@ class CyclePredictor:
 
         ovulation_day = last_period_start + timedelta(days=last_cycle_length - 14)
         fertile_start = ovulation_day - timedelta(days=5)
-        fertile_end = ovulation_day + timedelta(days=1)  # include day after ovulation
+        fertile_end = ovulation_day + timedelta(days=1)
 
         return {
             "ovulation_day": ovulation_day.strftime("%Y-%m-%d"),
@@ -84,4 +84,6 @@ class CyclePredictor:
 # --- Streamlit App ---
 st.title("Menstrual Cycle Tracker — Free Version")
 
-num_periods = st.number_input("How many past periods would y
+num_periods = st.number_input("How many past periods would you like to log?", min_value=2, max_value=10, value=2, step=1)
+
+period_ranges_
